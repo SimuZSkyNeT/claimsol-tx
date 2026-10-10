@@ -60,8 +60,20 @@
     }
 
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    /* 10/10/2026 (mobile): aprire la pagina DENTRO l'app del wallet la faceva ripartire da zero
+     * (wallet da riscansionare, ref perso, Connect da ripremere). Il link ora porta con sé il wallet
+     * scansionato (?wallet= è già nell'indirizzo), il ref e connect=1: dentro l'app si collega subito. */
+    function urlPerApp() {
+        const u = new URL(location.href);
+        u.searchParams.set("connect", "1");
+        try {
+            const r = localStorage.getItem("sh_ref");
+            if (r && !u.searchParams.get("ref")) u.searchParams.set("ref", r);
+        } catch (_) {}
+        return u.toString();
+    }
     function deepLinks() {
-        const url = encodeURIComponent(location.href), ref = encodeURIComponent(location.origin);
+        const url = encodeURIComponent(urlPerApp()), ref = encodeURIComponent(location.origin);
         return [
             ["Phantom", `https://phantom.app/ul/browse/${url}?ref=${ref}`],
             ["Solflare", `https://solflare.com/ul/v1/browse/${url}?ref=${ref}`],
@@ -123,6 +135,13 @@
     async function riprendi() {
         let nome = "";
         try { nome = localStorage.getItem("sh_wallet") || ""; } catch (_) {}
+        // arrivati dall'app del wallet con connect=1: si collega subito (una sola approvazione)
+        const qs = new URLSearchParams(location.search);
+        if (qs.get("connect") === "1") {
+            qs.delete("connect");
+            try { history.replaceState(null, "", location.pathname + (qs.toString() ? "?" + qs : "") + location.hash); } catch (_) {}
+            if (!nome) return collegaDaApp();
+        }
         if (!nome) return null;
         for (let i = 0; i < 20; i++) {                  // i wallet standard si registrano con un po' di ritardo
             const w = elenco().find(x => x.name === nome);
@@ -135,6 +154,22 @@
             }
             await new Promise(r => setTimeout(r, 150));
         }
+        return null;
+    }
+    async function collegaDaApp() {
+        // prima che la pagina abbia caricato account.js nessuno ascolterebbe «sh-connected» (niente login)
+        if (document.readyState === "loading")
+            await new Promise(r => document.addEventListener("DOMContentLoaded", r, { once: true }));
+        let lista = [];
+        for (let i = 0; i < 20 && !lista.length; i++) {        // nell'app il wallet si registra in un attimo
+            lista = elenco();
+            if (!lista.length) await new Promise(r => setTimeout(r, 150));
+        }
+        if (lista.length === 1) {
+            try { return await connetti(lista[0]); }            // evento sh-connected → login automatico
+            catch (_) { /* richiesta automatica rifiutata: si apre la scelta normale */ }
+        }
+        document.dispatchEvent(new CustomEvent("sh-connect-request"));
         return null;
     }
     const pronto = riprendi();
