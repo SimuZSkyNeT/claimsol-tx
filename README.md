@@ -39,9 +39,11 @@ evil transaction refused: transaction was changed
 | Token `CloseAccount` (9) | every empty account you select | rent goes to **your** wallet, you are the authority |
 | Token `BurnChecked` (15) + `CloseAccount` | only tokens you tick to burn | burns **your own** leftover balance of that token |
 | Metaplex `BurnV1` | only NFTs you tick to burn | rent of token, metadata and edition back to you |
+| pump.fun `collect_creator_fee` / PumpSwap `collect_coin_creator_fee` | only if you launched tokens and tick "creator fees" | your unclaimed creator fees go to **your** wallet |
 | Jupiter swap to SOL + `CloseAccount` | only tokens you tick "Sell" | you get the SOL |
 | System `Transfer` to our fee wallet | once per transaction | the service fee, shown before you sign |
 | System `Transfer` to the project wallet | gas-free claims only | refunds the network fee we paid for you |
+| System `Transfer` to your order's payment address | only when you buy VIP on the site | the plan price, a separate transaction you approve |
 
 There are **no** token approvals, no delegations, no `SetAuthority`, and no transfer of your
 tokens to anyone. The server re-reads every account from the chain: the browser only says
@@ -82,6 +84,7 @@ sign a transfer out of the project wallet, and it is refused.
 | [`claimsol/builder.py`](claimsol/builder.py) | close, burn and NFT transactions with the fee transfer |
 | [`claimsol/swap.py`](claimsol/swap.py) | "Sell": Jupiter swap, close, fee |
 | [`claimsol/nft.py`](claimsol/nft.py) | Metaplex `BurnV1` for junk NFTs |
+| [`claimsol/creator.py`](claimsol/creator.py) | pump.fun and PumpSwap creator fee collection |
 | [`claimsol/simulate.py`](claimsol/simulate.py) | simulation before any signature |
 | [`claimsol/cosign.py`](claimsol/cosign.py) | when the server may co-sign a gas-free claim |
 | [`web/wallet.js`](web/wallet.js) | browser side: wallet connection and signing, the exact file served by the site |
