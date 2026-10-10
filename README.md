@@ -105,6 +105,11 @@ landing in the owner's wallet, and one fee transfer.
 
 <p align="center"><img src="docs/home.png" alt="Claim SOL home page" width="700"></p>
 
+## Contributing
+
+Ideas, new wallets, edge cases, tests: contributions are welcome. Start from
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Security
 
 Found something? See [SECURITY.md](SECURITY.md).
