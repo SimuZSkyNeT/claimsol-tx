@@ -25,6 +25,7 @@ $ python -m examples.test_build_and_cosign
 close: 10 accounts, 691 bytes, signers=1, recovered=20392800 fee=4078560 (20%)
 close: 3 accounts, 418 bytes, signers=1, recovered=6117840 fee=1223568 (20%)
 gas-free co-signed, both signatures valid: True True
+wallet-added Lighthouse guard: accepted
 evil transaction refused: transaction was changed
 ```
 
@@ -64,8 +65,12 @@ transactions have two signers and follow one strict rule, in
 [`claimsol/cosign.py`](claimsol/cosign.py):
 
 1. you sign first;
-2. the server adds its signature **only** if the message is byte for byte one it built for
-   you, and **only** after your signature verifies on it.
+2. the server adds its signature **only** to a transaction it built for you, and **only**
+   after your signature verifies on it;
+3. if your wallet changed the transaction before signing (Phantom adds Lighthouse guards),
+   it is accepted only when every instruction we built is still there, in order, and the
+   only additions are Lighthouse guards or a capped compute budget. An extra transfer, a
+   missing instruction or any other program means refusal.
 
 So the project key can never be used to sign anything else. The test above tries to make it
 sign a transfer out of the project wallet, and it is refused.

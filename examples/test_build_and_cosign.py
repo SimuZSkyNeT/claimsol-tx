@@ -35,6 +35,21 @@ for *_, raw, msg in txs:
     print("gas-free co-signed, both signatures valid:",
           out.signatures[0].verify(project.pubkey(), msg), out.signatures[1].verify(user.pubkey(), msg))
 
+# a wallet that adds Lighthouse guards (like Phantom) is still accepted
+from solders.instruction import Instruction, AccountMeta
+from solders.pubkey import Pubkey
+from claimsol.cosign import LIGHTHOUSE
+*_, raw, msg = txs[0]
+m = VersionedTransaction.from_bytes(raw).message
+keys = list(m.account_keys)
+ixs = [Instruction(keys[ix.program_id_index], bytes(ix.data),
+                   [AccountMeta(keys[i], m.is_signer(i), m.is_maybe_writable(i)) for i in ix.accounts]) for ix in m.instructions]
+guard = Instruction(Pubkey.from_string(LIGHTHOUSE), b"\x01", [AccountMeta(Keypair().pubkey(), False, True)])
+m2 = MessageV0.try_compile(project.pubkey(), ixs + [guard], [], bh)
+signed = VersionedTransaction.populate(m2, [Signature.default(), user.sign_message(to_bytes_versioned(m2))])
+cosign.cosign(bytes(signed), built, project)
+print("wallet-added Lighthouse guard: accepted")
+
 # attack: a transaction we didn't build (drain the project wallet) is refused
 evil = MessageV0.try_compile(project.pubkey(), [transfer(TransferParams(
     from_pubkey=project.pubkey(), to_pubkey=user.pubkey(), lamports=10**9))], [], bh)
