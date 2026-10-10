@@ -1,4 +1,4 @@
-/* SolHouse Tools — connettore universale per i wallet Solana.
+/* SolHouse Signal Tools — connettore universale per i wallet Solana.
  *
  * 1) Wallet Standard (Phantom, Solflare, Backpack, Glow, OKX, Coinbase, Trust, Bitget,
  *    Exodus, Magic Eden, …): scoperti con l'evento standard, firmano byte grezzi.
