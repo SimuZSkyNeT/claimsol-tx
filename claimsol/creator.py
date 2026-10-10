@@ -11,7 +11,7 @@ to the creator wallet:
 
 Only the creator wallet can sign these instructions: nobody else can collect the fees, and the
 SOL always lands in the creator's own wallet. Our fee is a separate, visible System Transfer.
-
+"""
 import hashlib
 
 from solders.instruction import AccountMeta, Instruction
