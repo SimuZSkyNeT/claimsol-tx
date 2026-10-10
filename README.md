@@ -1,73 +1,109 @@
-# Claim SOL — transaction code
+<h1 align="center">Claim SOL</h1>
+<p align="center"><i>Your SOL, back in your wallet. Every transaction in plain sight.</i></p>
 
-This is the code that builds **every transaction** signed on
-[claimsol.solhousesignal.com](https://claimsol.solhousesignal.com), published so that anyone
-can check exactly what users are asked to sign.
+<p align="center">
+  <a href="https://claimsol.solhousesignal.com"><img alt="Live" src="https://img.shields.io/badge/live-claimsol.solhousesignal.com-8B5CF6.svg"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Chain" src="https://img.shields.io/badge/chain-Solana-14F195.svg">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue.svg">
+  <img alt="Approvals" src="https://img.shields.io/badge/token%20approvals-none-brightgreen.svg">
+</p>
 
-Claim SOL gives back the SOL locked in old token accounts. Every token you trade on Solana
-opens an account that holds ~0.002 SOL of rent; when the balance goes to zero the account
-stays open and the SOL stays locked. Claim SOL closes those accounts and the rent goes back
-to **your** wallet. We keep a service fee, a fixed percentage of what is recovered, sent as a
-separate, visible transfer.
+Every token you trade on Solana opens a token account that locks **~0.002 SOL of rent**. When
+you sell, the balance goes to zero but the account stays open, and the SOL stays locked.
+Active traders end up with hundreds or thousands of them.
 
-## What a transaction can contain — and nothing else
+**Claim SOL** finds those empty accounts and closes them: the rent goes straight back to
+**your** wallet. This repository is the exact code that builds every transaction users sign
+on [claimsol.solhousesignal.com](https://claimsol.solhousesignal.com), published so anyone
+can check what they are signing.
+
+<p align="center"><img src="docs/screenshot.png" alt="Claim SOL: a scanned wallet with 2,511 empty accounts" width="860"></p>
+
+```console
+$ python -m examples.test_build_and_cosign
+close: 10 accounts, 691 bytes, signers=1, recovered=20392800 fee=4078560 (20%)
+close: 3 accounts, 418 bytes, signers=1, recovered=6117840 fee=1223568 (20%)
+gas-free co-signed, both signatures valid: True True
+evil transaction refused: transaction was changed
+```
+
+---
+
+## What you sign, and nothing else
 
 | Instruction | When | Effect |
 |---|---|---|
-| ComputeBudget limit / price | always | network priority |
-| Token `CloseAccount` (9) | every empty account you select | rent goes to **your** wallet; you are the authority |
+| ComputeBudget limit and price | always | network priority |
+| Token `CloseAccount` (9) | every empty account you select | rent goes to **your** wallet, you are the authority |
 | Token `BurnChecked` (15) + `CloseAccount` | only tokens you tick to burn | burns **your own** leftover balance of that token |
-| Metaplex `BurnV1` | only NFTs you tick to burn | rent of token + metadata + edition back to you |
-| Jupiter swap → SOL + `CloseAccount` | only tokens you tick "Sell" | you get the SOL |
-| System `Transfer` user → fee wallet | once per transaction | our service fee, shown before signing |
-| System `Transfer` user → project wallet | gas-free claims only | refunds the network fee we paid for you |
+| Metaplex `BurnV1` | only NFTs you tick to burn | rent of token, metadata and edition back to you |
+| Jupiter swap to SOL + `CloseAccount` | only tokens you tick "Sell" | you get the SOL |
+| System `Transfer` to our fee wallet | once per transaction | the service fee, shown before you sign |
+| System `Transfer` to the project wallet | gas-free claims only | refunds the network fee we paid for you |
 
-There are **no** token approvals, delegations, `SetAuthority`, or transfers of your tokens to
-anyone. The server re-reads every account from the chain: the browser only says which of your
-own accounts to include.
+There are **no** token approvals, no delegations, no `SetAuthority`, and no transfer of your
+tokens to anyone. The server re-reads every account from the chain: the browser only says
+which of your own accounts to include.
 
-## Safety properties
+## How it works
 
-- **One signer** (you). Gas-free claims have two signers: you sign first, then the server
-  co-signs **only** a message byte-for-byte identical to one it built for you, and only after
-  verifying your signature on it — see [`claimsol/cosign.py`](claimsol/cosign.py).
-- **Small transactions**: at most 850 bytes (Solana's limit is 1232), with compute-unit
-  headroom, so wallets can add their own guard instructions (Phantom Lighthouse).
-- **Simulated before you sign**: every transaction is simulated with `sigVerify: false`; one
-  that would fail is dropped and never shown to your wallet —
-  [`claimsol/simulate.py`](claimsol/simulate.py).
-- **Phantom sends it itself** with `signAndSendAllTransactions` (one approval), so Phantom's
-  own protections apply — [`web/wallet.js`](web/wallet.js) is the exact file served by the site.
-- **Public record**: every claim is listed with its on-chain signature in the
-  [live explorer](https://claimsol.solhousesignal.com/explorer/).
+| Step | What happens |
+|---|---|
+| 1. Scan | paste any address: we read its token accounts on-chain. No connection, nothing to sign |
+| 2. Choose | empty accounts are pre-selected; dust and NFTs only if you tick them |
+| 3. Build | the server builds small transactions (max 850 bytes, Solana allows 1232) |
+| 4. Simulate | every transaction is simulated with `sigVerify: false`; any that would fail is dropped before your wallet ever sees it |
+| 5. Sign | one approval for the whole batch. Phantom submits it itself with `signAndSendAllTransactions`, so its own protections apply |
+| 6. Verify | every claim is listed with its on-chain signature in the [public explorer](https://claimsol.solhousesignal.com/explorer/) |
+
+## Gas-free claims
+
+A wallet with 0 SOL can still claim: our project wallet pays the network fee. These
+transactions have two signers and follow one strict rule, in
+[`claimsol/cosign.py`](claimsol/cosign.py):
+
+1. you sign first;
+2. the server adds its signature **only** if the message is byte for byte one it built for
+   you, and **only** after your signature verifies on it.
+
+So the project key can never be used to sign anything else. The test above tries to make it
+sign a transfer out of the project wallet, and it is refused.
 
 ## Files
 
 | File | What |
 |---|---|
-| [`claimsol/builder.py`](claimsol/builder.py) | builds the close / burn / NFT transactions and the fee transfer |
-| [`claimsol/swap.py`](claimsol/swap.py) | "Sell" option: Jupiter swap + close + fee |
+| [`claimsol/builder.py`](claimsol/builder.py) | close, burn and NFT transactions with the fee transfer |
+| [`claimsol/swap.py`](claimsol/swap.py) | "Sell": Jupiter swap, close, fee |
 | [`claimsol/nft.py`](claimsol/nft.py) | Metaplex `BurnV1` for junk NFTs |
-| [`claimsol/simulate.py`](claimsol/simulate.py) | pre-signature simulation |
+| [`claimsol/simulate.py`](claimsol/simulate.py) | simulation before any signature |
 | [`claimsol/cosign.py`](claimsol/cosign.py) | when the server may co-sign a gas-free claim |
-| [`web/wallet.js`](web/wallet.js) | browser side: wallet connection and signing, as served |
+| [`web/wallet.js`](web/wallet.js) | browser side: wallet connection and signing, the exact file served by the site |
 | [`examples/test_build_and_cosign.py`](examples/test_build_and_cosign.py) | offline check, including a refused tampered transaction |
 
+## Try it
+
+```console
+$ pip install solders
+$ python -m examples.test_build_and_cosign
 ```
-pip install solders
-python -m examples.test_build_and_cosign
-```
 
-## Check a transaction yourself
+No network, no keys: it builds a claim for a random wallet, signs it, co-signs it, and shows
+that a transaction we did not build is refused.
 
-Open any signature from the explorer on [Solscan](https://solscan.io): you will see only the
-instructions listed above, the rent landing in the user's own wallet, and one fee transfer.
+## Check a real transaction
 
-## Contact
+Open any signature from the [explorer](https://claimsol.solhousesignal.com/explorer/) on
+[Solscan](https://solscan.io): you will only find the instructions listed above, the rent
+landing in the owner's wallet, and one fee transfer.
 
-SolHouse Signal · Telegram [@SimuZT](https://t.me/SimuZT) ·
-[solhousesignal.com](https://solhousesignal.com)
+<p align="center"><img src="docs/home.png" alt="Claim SOL home page" width="700"></p>
+
+## Security
+
+Found something? See [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+MIT. Made by [SolHouse Signal](https://solhousesignal.com).
