@@ -200,21 +200,14 @@
             const f = c.ref.features["solana:signTransaction"];
             if (!f) throw new Error(`${c.name} can only sign-and-send: please use another wallet`);
             const inputs = txsB64.map(t => ({ transaction: b64ToBytes(t), account: c.account, chain: CHAIN }));
-            let out;
-            try {
-                out = await f.signTransaction(...inputs);          // tutte in una volta
-            } catch (e) {
-                if (inputs.length < 2) throw e;
-                out = [];                                          // wallet che ne accettano una sola
-                for (const i of inputs) out.push(...(await f.signTransaction(i)));
-            }
+            const out = [];                                        // 11/10: una per richiesta (vedi inviaPhantom)
+            for (const i of inputs) out.push(...(await f.signTransaction(i)));
             return out.map(o => bytesToB64(o.signedTransaction));
         }
         if (!window.solanaWeb3) throw new Error("Wallet library not loaded");
         const txs = txsB64.map(t => window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(t)));
         let signed;
-        if (c.ref.signAllTransactions) signed = await c.ref.signAllTransactions(txs);
-        else { signed = []; for (const t of txs) signed.push(await c.ref.signTransaction(t)); }
+        signed = []; for (const t of txs) signed.push(await c.ref.signTransaction(t));
         return signed.map(t => bytesToB64(t.serialize()));
     }
 
@@ -265,7 +258,7 @@
      *  Ritorna le firme base58 nell'ordine. Se il wallet ne accetta una per volta, ripiega. */
     async function firmaEInviaTutte(txsB64, avanzamento) {
         const c = W.conn;
-        if (txsB64.length > 1) {
+        if (txsB64.length > 1 && false) {      // 11/10: richiesta multipla = blocco rosso su Phantom
             try {
                 if (c.kind === "standard") {
                     const f = c.ref.features["solana:signAndSendTransaction"];
@@ -303,13 +296,27 @@
         return !!(c && /phantom/i.test(c.name) && p && typeof p.signAndSendAllTransactions === "function"
                   && window.solanaWeb3);
     }
-    async function inviaPhantom(txsB64) {
+    /** 🔴 11/10/2026, provato con Phantom vero (26.32): QUALUNQUE richiesta con più transazioni insieme
+     *  (signAndSendAllTransactions, signAllTransactions) mostra «Request blocked · This dApp could be
+     *  malicious», anche due trasferimenti banali su example.com. Una transazione per richiesta passa
+     *  pulita. Quindi: una alla volta. Rifiuto dell'utente → ci si ferma, le precedenti restano fatte. */
+    async function inviaPhantom(txsB64, avanzamento) {
         const p = window.phantom.solana;
         if (!p.isConnected) await p.connect();
-        const txs = txsB64.map(t => window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(t)));
-        const r = await p.signAndSendAllTransactions(txs, { preflightCommitment: "confirmed" });
-        const sigs = (r && (r.signatures || r)) || [];
-        return sigs.map(x => (x == null ? null : (typeof x === "string" ? x : (x.signature || x).toString())));
+        const sigs = [];
+        for (let i = 0; i < txsB64.length; i++) {
+            if (avanzamento) avanzamento(i, txsB64.length);
+            const tx = window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(txsB64[i]));
+            try {
+                const r = await p.signAndSendTransaction(tx, { preflightCommitment: "confirmed" });
+                const x = r && (r.signature || r);
+                sigs.push(x == null ? null : x.toString());
+            } catch (e) {
+                if (!sigs.some(Boolean)) throw e;
+                break;
+            }
+        }
+        return sigs;
     }
 
     /** Firma un messaggio di testo (login «Sign in with Solana»). Ritorna la firma in base64. */
