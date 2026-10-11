@@ -85,6 +85,7 @@ sign a transfer out of the project wallet, and it is refused.
 | [`claimsol/swap.py`](claimsol/swap.py) | "Sell": Jupiter swap, close, fee |
 | [`claimsol/nft.py`](claimsol/nft.py) | Metaplex `BurnV1` for junk NFTs |
 | [`claimsol/creator.py`](claimsol/creator.py) | pump.fun and PumpSwap creator fee collection |
+| [`claimsol/alt.py`](claimsol/alt.py) | lookup tables: up to 25 accounts per transaction, one approval each |
 | [`claimsol/simulate.py`](claimsol/simulate.py) | simulation before any signature |
 | [`claimsol/cosign.py`](claimsol/cosign.py) | when the server may co-sign a gas-free claim |
 | [`web/wallet.js`](web/wallet.js) | browser side: wallet connection and signing, the exact file served by the site |

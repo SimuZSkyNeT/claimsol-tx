@@ -300,14 +300,17 @@
      *  (signAndSendAllTransactions, signAllTransactions) mostra «Request blocked · This dApp could be
      *  malicious», anche due trasferimenti banali su example.com. Una transazione per richiesta passa
      *  pulita. Quindi: una alla volta. Rifiuto dell'utente → ci si ferma, le precedenti restano fatte. */
-    async function inviaPhantom(txsB64, avanzamento) {
+    async function inviaPhantom(txsB64, avanzamento, rinnova) {
         const p = window.phantom.solana;
         if (!p.isConnected) await p.connect();
         const sigs = [];
         for (let i = 0; i < txsB64.length; i++) {
             if (avanzamento) avanzamento(i, txsB64.length);
-            const tx = window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(txsB64[i]));
             try {
+                // 🕐 blockhash fresco subito prima di ogni approvazione (le precedenti possono aver preso minuti)
+                let b64 = txsB64[i];
+                if (rinnova && i > 0) { try { b64 = (await rinnova(i)) || b64; } catch (_) {} }
+                const tx = window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(b64));
                 const r = await p.signAndSendTransaction(tx, { preflightCommitment: "confirmed" });
                 const x = r && (r.signature || r);
                 sigs.push(x == null ? null : x.toString());
