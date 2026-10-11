@@ -42,7 +42,7 @@ evil transaction refused: transaction was changed
 | pump.fun `collect_creator_fee` / PumpSwap `collect_coin_creator_fee` | only if you launched tokens and tick "creator fees" | your unclaimed creator fees go to **your** wallet |
 | Jupiter swap to SOL + `CloseAccount` | only tokens you tick "Sell" | you get the SOL |
 | System `Transfer` to our fee wallet | once per transaction | the service fee, shown before you sign |
-| System `Transfer` to the project wallet | gas-free claims only | refunds the network fee we paid for you |
+| System `Transfer` to the project wallet | gas-free claims only | pays back the small SOL loan we sent you for the network fee, plus the gas-free fee (your wallet stays the only signer) |
 | System `Transfer` to your order's payment address | only when you buy VIP on the site | the plan price, a separate transaction you approve |
 
 There are **no** token approvals, no delegations, no `SetAuthority`, and no transfer of your
