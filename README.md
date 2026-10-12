@@ -22,8 +22,10 @@ can check what they are signing.
 
 ```console
 $ python -m examples.test_build_and_cosign
-close: 10 accounts, 691 bytes, signers=1, recovered=20392800 fee=4078560 (20%)
-close: 3 accounts, 418 bytes, signers=1, recovered=6117840 fee=1223568 (20%)
+mix: 10 accounts, 691 bytes, signers=1, recovered=20392800 fee=4078560 (20%)
+mix: 3 accounts, 418 bytes, signers=1, recovered=6117840 fee=1223568 (20%)
+2 closes + 2 burns: 1 transaction, 553 bytes
+gas-free co-signed, both signatures valid: True True
 gas-free co-signed, both signatures valid: True True
 wallet-added Lighthouse guard: accepted
 evil transaction refused: transaction was changed
@@ -55,9 +57,9 @@ which of your own accounts to include.
 |---|---|
 | 1. Scan | paste any address: we read its token accounts on-chain. No connection, nothing to sign |
 | 2. Choose | empty accounts are pre-selected; dust and NFTs only if you tick them |
-| 3. Build | the server builds small transactions (max 850 bytes, Solana allows 1232) |
+| 3. Build | the server builds small transactions (max 850 bytes, Solana allows 1232). Closures and burns share the same transaction, so a small claim needs a single approval |
 | 4. Simulate | every transaction is simulated with `sigVerify: false`; any that would fail is dropped before your wallet ever sees it |
-| 5. Sign | one approval for the whole batch. Phantom submits it itself with `signAndSendAllTransactions`, so its own protections apply |
+| 5. Sign | one transaction per approval, sent with `signAndSendTransaction`: Phantom submits it itself, so its own protections apply |
 | 6. Verify | every claim is listed with its on-chain signature in the [public explorer](https://claimsol.solhousesignal.com/explorer/) |
 
 ## Gas-free claims

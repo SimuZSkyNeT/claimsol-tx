@@ -25,6 +25,12 @@ for kind, n, rec, fee, extra, raw, msg in txs:
     print(f"{kind}: {n} accounts, {len(raw)} bytes, signers={len(tx.signatures)}, "
           f"recovered={rec} fee={fee} ({fee / rec:.0%})")
 
+# small claim with both: 2 empty accounts + 2 tokens to burn go into ONE transaction
+dust = [{"pubkey": str(Keypair().pubkey()), "mint": str(Keypair().pubkey()), "program": "token",
+         "rent": 2_039_280, "amount": "1000", "decimals": 0} for _ in range(2)]
+txs = builder.build(user.pubkey(), empty[:2], dust, [], 20, fee_wallet, bh)
+print(f"2 closes + 2 burns: {len(txs)} transaction, {len(txs[0][5])} bytes")
+
 # gas-free claim: project wallet pays the network fee, the user signs first
 txs = builder.build(user.pubkey(), empty, [], [], 20, fee_wallet, bh, sponsor=project.pubkey())
 built = {t[6] for t in txs}

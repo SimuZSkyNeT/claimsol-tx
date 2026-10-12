@@ -34,6 +34,9 @@ TOKEN22 = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 
 MAX_CLOSE_TX = 10          # close-account per transaction (leaves room for wallet-side guards)
 MAX_BURN_TX = 5            # burn+close per transaction
+# Closures and burns share the same transaction instead of being split by type (fewer
+# approvals on small claims). Weight: close 1, burn+close 2; 10 = the two caps above.
+MIX_WEIGHT_TX = 10
 NFT_PER_TX = 2
 CU_PRICE = 20_000          # micro-lamports per CU: modest priority
 MAX_BYTE_TX = 850          # our own cap, well below Solana's 1232: room for Phantom Lighthouse
@@ -72,22 +75,29 @@ def build(owner, empty, dust_to_burn, nfts, fee_pct, fee_wallet, blockhash,
     Every transaction is then simulated (simulate.py) and dropped if it would fail, BEFORE the
     user is asked to sign anything.
     """
-    groups = [("close", empty[i:i + MAX_CLOSE_TX]) for i in range(0, len(empty), MAX_CLOSE_TX)]
-    groups += [("burn", dust_to_burn[i:i + MAX_BURN_TX]) for i in range(0, len(dust_to_burn), MAX_BURN_TX)]
-    groups += [("nft", nfts[i:i + NFT_PER_TX]) for i in range(0, len(nfts), NFT_PER_TX)]
+    groups, cur, weight = [], [], 0
+    for k, a in [("close", a) for a in empty] + [("burn", a) for a in dust_to_burn]:
+        w = 1 if k == "close" else 2
+        if cur and weight + w > MIX_WEIGHT_TX:
+            groups.append(("mix", cur)); cur, weight = [], 0
+        cur.append((k, a)); weight += w
+    if cur:
+        groups.append(("mix", cur))
+    groups += [("nft", [("nft", a) for a in nfts[i:i + NFT_PER_TX]]) for i in range(0, len(nfts), NFT_PER_TX)]
     out = []
     for kind, group in groups:
-        per_acc = {"burn": 12_000, "nft": 120_000}.get(kind, 4_000)
-        # +60k CU of headroom for the guard instructions wallets may add (Lighthouse)
-        ixs = [set_compute_unit_limit(60_000 + len(group) * per_acc), set_compute_unit_price(CU_PRICE)]
+        # CU per account: close 4k, burn+close 12k, NFT burn 120k, plus 60k of headroom for the
+        # guard instructions wallets may add (Lighthouse)
+        cu = 60_000 + sum({"burn": 12_000, "nft": 120_000}.get(k, 4_000) for k, _ in group)
+        ixs = [set_compute_unit_limit(cu), set_compute_unit_price(CU_PRICE)]
         recovered = 0
-        for a in group:
+        for k, a in group:
             program = TOKEN22 if a["program"] == "token2022" else TOKEN
             acc = Pubkey.from_string(a["pubkey"])
-            if kind == "nft":
+            if k == "nft":
                 ixs.append(NFT.ix_burn(owner, a))
             else:
-                if kind == "burn":
+                if k == "burn":
                     ixs.append(ix_burn(program, acc, a["mint"], owner, a["amount"], a["decimals"]))
                 ixs.append(ix_close(program, acc, owner))
             recovered += a["rent"]
@@ -103,7 +113,11 @@ def build(owner, empty, dust_to_burn, nfts, fee_pct, fee_wallet, blockhash,
         raw = bytes(tx)
         if len(raw) > (MAX_BYTE_TX_SPONSOR if sponsor else MAX_BYTE_TX):
             if kind == "nft" and len(group) > 1:      # two NFTs from different collections: split
-                groups.extend(("nft", [a]) for a in group)
+                groups.extend(("nft", [v]) for v in group)
+                continue
+            if kind == "mix" and len(group) > 1:      # still too large: split in two halves
+                half = len(group) // 2
+                groups.extend([("mix", group[:half]), ("mix", group[half:])])
                 continue
             raise ValueError("transaction too large")
         out.append((kind, len(group), recovered, fee, extra, raw, to_bytes_versioned(msg)))
