@@ -21,7 +21,7 @@ multi-instruction/multi-transaction requests.
 |---|---|
 | Program ID | `J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR` |
 | ProgramData | `8UujbWy7UqZEB3Gp2GLdb8tMPVLb8QcRF3WD2mEMRyP9` |
-| Upgrade authority | the deployer (claimsol.solhousesignal.com project wallet) |
+| Upgrade authority | **none, permanently revoked** (`set-upgrade-authority --final`, 13/10): the deployed binary can never be changed by anyone, not even by the deployer |
 | Source | Rust `solana-program`, no macros, ~22.5 KB, readable in `program/src/lib.rs` of this repo |
 | Cost per claim | only the normal network fee (~5,000 lamports + priority), the program takes nothing |
 
@@ -72,7 +72,8 @@ CPI layout (both programs): `[source, destination=owner, authority=owner signer]
 - **Phantom**: a single-instruction close_many tx passes the Phantom origin gate with a
   normal "Confirm Transaction" popup (verified with real Phantom 26.33 on the
   claimsol.solhousesignal.com origin). The program label shows as "Unknown · Program J9Cwi…"
-  only while an explorer hasn't picked up the verification yet, cosmetic only.
+  because wallets keep program names in their own curated database, not on-chain — cosmetic
+  only, it does not affect the popup or the transaction.
 - **Explorer verification ✅**: the on-chain binary is byte-identical to this repo's source
   build (solana-verify / OtterVerify, verified 13/10/2026, repo pinned at commit `b904fd5`,
   build recipe `solana-verifiable-build:4.3.0`, arch `v3`). Solscan and other explorers that
@@ -251,6 +252,8 @@ confirm popup on Phantom. It charges a commission on the recovered rent.
 
 The program source is in this repository (`program/src/lib.rs`); it was deployed and is
 maintained by the Claim SOL project. You are free to use the program from any dApp or
-script, attribution appreciated, not required. The program is upgradeable, but only by the upgrade authority listed above
-(an upgrade would also drop the verified badge until it is verified again), so pin the Program ID
-(never trust a different address that claims to be "close_many").
+script, attribution appreciated, not required. The program is **immutable**: its upgrade
+authority has been permanently revoked (`set-upgrade-authority --final`), so the deployed
+binary can never change — if a new version is ever needed it will live at a different
+address. Pin this Program ID (never trust a different address that claims to be
+"close_many").
