@@ -72,7 +72,7 @@ CPI layout (both programs): `[source, destination=owner, authority=owner signer]
 - **Phantom**: a single-instruction close_many tx passes the Phantom origin gate with a
   normal "Confirm Transaction" popup (verified with real Phantom 26.33 on the
   claimsol.solhousesignal.com origin). The program label shows as "Unknown · Program J9Cwi…"
-  because wallets keep program names in their own curated database, not on-chain — cosmetic
+  because wallets keep program names in their own curated database, not on-chain: cosmetic
   only, it does not affect the popup or the transaction.
 - **Explorer verification ✅**: the on-chain binary is byte-identical to this repo's source
   build (solana-verify / OtterVerify, verified 13/10/2026, repo pinned at commit `b904fd5`,
@@ -254,6 +254,6 @@ The program source is in this repository (`program/src/lib.rs`); it was deployed
 maintained by the Claim SOL project. You are free to use the program from any dApp or
 script, attribution appreciated, not required. The program is **immutable**: its upgrade
 authority has been permanently revoked (`set-upgrade-authority --final`), so the deployed
-binary can never change — if a new version is ever needed it will live at a different
+binary can never change. If a new version is ever needed it will live at a different
 address. Pin this Program ID (never trust a different address that claims to be
 "close_many").
