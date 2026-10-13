@@ -9,7 +9,7 @@ needs far fewer approvals.
 | Program id | [`J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR`](https://solscan.io/account/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR) |
 | Verified build | ✅ [OtterSec verify status](https://verify.osec.io/status/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR): the on-chain binary matches this source at commit `b904fd5` |
 | Source | [`src/lib.rs`](src/lib.rs), about 80 lines, `solana-program` only |
-| Upgrade authority | the Claim SOL project wallet (`D4yzXQEKpbq2bY4awAX2QBDCqZxNBHwJryk4V72nVrmx`). Any upgrade changes the binary hash, so it would show as unverified until it is verified again |
+| Upgrade authority | **none**: permanently revoked on 13/10/2026 (`set-upgrade-authority --final`). The deployed binary can never be changed by anyone, us included ([OtterSec](https://verify.osec.io/status/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR): `is_frozen: true`) |
 
 ## What it does, and what it cannot do
 
