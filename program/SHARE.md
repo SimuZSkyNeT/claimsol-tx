@@ -90,12 +90,12 @@ CPI layout (both programs): `[source, destination=owner, authority=owner signer]
 pip install solders aiohttp
 ```
 
-`chiudi_conti.py`:
+`close_accounts.py`:
 
 ```python
-# Chiude TUTTI i token account vuoti del wallet, un'istruzione per 53 account.
-# Uso:  python3 chiudi_conti.py wallet.json [--go]        (senza --go = simulazione)
-# Serve ~0,01 SOL per ogni lookup table da 53 account (l'affitto si recupera: vedi fondo).
+# Closes ALL the empty token accounts of the wallet, one instruction per 53 accounts.
+# Usage: python3 close_accounts.py wallet.json [--go]     (without --go = simulation)
+# Needs ~0.01 SOL for each 53-account lookup table (the rent comes back: see the end).
 import asyncio, base64, json, struct, sys
 import aiohttp
 from solders.address_lookup_table_account import AddressLookupTableAccount, derive_lookup_table_address
@@ -108,14 +108,14 @@ from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
 
-RPC = "https://api.mainnet-beta.solana.com"          # qualsiasi RPC pubblico
+RPC = "https://api.mainnet-beta.solana.com"          # any public RPC
 CM = Pubkey.from_string("J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR")
 KEG = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
 T22 = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 ALT_P = Pubkey.from_string("AddressLookupTab1e1111111111111111111111111")
 SYS = Pubkey.from_string("11111111111111111111111111111111")
 GO = "--go" in sys.argv
-KP = Keypair.from_bytes(bytes(json.load(open(sys.argv[1]))))   # file solana-keygen standard
+KP = Keypair.from_bytes(bytes(json.load(open(sys.argv[1]))))   # standard solana-keygen file
 
 
 async def rpc(s, m, p):
@@ -123,8 +123,8 @@ async def rpc(s, m, p):
         return await r.json()
 
 
-async def invia(s, ixs, payer=KP):
-    """Invia una tx pagata dal wallet (pattern di produzione: skipPreflight + retry)."""
+async def send(s, ixs, payer=KP):
+    """Send a tx paid by the wallet (production pattern: skipPreflight + retry)."""
     bh = (await rpc(s, "getLatestBlockhash", [{"commitment": "confirmed"}]))["result"]["value"]["blockhash"]
     tx = VersionedTransaction(MessageV0.try_compile(payer.pubkey(), ixs, [], Hash.from_string(bh)), [payer])
     raw = base64.b64encode(bytes(tx)).decode()
@@ -136,68 +136,68 @@ async def invia(s, ixs, payer=KP):
         v = ((st.get("result") or {}).get("value") or [None])[0]
         if v and v.get("confirmationStatus") in ("confirmed", "finalized"):
             if v.get("err"):
-                raise SystemExit(f"tx fallita: {v['err']}")
+                raise SystemExit(f"tx failed: {v['err']}")
             return sig
-    raise SystemExit(f"tx non confermata: {sig}")
+    raise SystemExit(f"tx not confirmed: {sig}")
 
 
-def ix_alt_crea(tab, bump, slot, pagatore):
+def ix_alt_create(tab, bump, slot, payer_kp):
     return Instruction(ALT_P, struct.pack("<IQB", 0, slot, bump),
                        [AccountMeta(tab, False, True), AccountMeta(KP.pubkey(), True, False),
-                        AccountMeta(pagatore.pubkey(), True, True), AccountMeta(SYS, False, False)])
+                        AccountMeta(payer_kp.pubkey(), True, True), AccountMeta(SYS, False, False)])
 
 
-def ix_alt_estendi(tab, pagatore, indirizzi):
-    return Instruction(ALT_P, struct.pack("<IQ", 2, len(indirizzi)) + b"".join(bytes(a) for a in indirizzi),
+def ix_alt_extend(tab, payer_kp, addresses):
+    return Instruction(ALT_P, struct.pack("<IQ", 2, len(addresses)) + b"".join(bytes(a) for a in addresses),
                        [AccountMeta(tab, False, True), AccountMeta(KP.pubkey(), True, False),
-                        AccountMeta(pagatore.pubkey(), True, True), AccountMeta(SYS, False, False)])
+                        AccountMeta(payer_kp.pubkey(), True, True), AccountMeta(SYS, False, False)])
 
 
-def ix_alt_disattiva(tab):
+def ix_alt_deactivate(tab):
     return Instruction(ALT_P, struct.pack("<I", 3), [AccountMeta(tab, False, True),
                                                      AccountMeta(KP.pubkey(), True, False)])
 
 
-async def tabella(s, indirizzi):
-    """Crea + estende una lookup table con questi indirizzi (autorità e pagatore = il wallet)."""
+async def lookup_table(s, addresses):
+    """Create + extend a lookup table with these addresses (authority and payer = the wallet)."""
     slot = int((await rpc(s, "getSlot", [{"commitment": "finalized"}]))["result"])
     tab, bump = derive_lookup_table_address(KP.pubkey(), slot)
-    pezzi = [indirizzi[i:i + 27] for i in range(0, len(indirizzi), 27)]
-    await invia(s, [ix_alt_crea(tab, bump, slot, KP), ix_alt_estendi(tab, KP, pezzi[0])])
-    for p in pezzi[1:]:
-        await invia(s, [ix_alt_estendi(tab, KP, p)])
+    chunks = [addresses[i:i + 27] for i in range(0, len(addresses), 27)]
+    await send(s, [ix_alt_create(tab, bump, slot, KP), ix_alt_extend(tab, KP, chunks[0])])
+    for p in chunks[1:]:
+        await send(s, [ix_alt_extend(tab, KP, p)])
     for _ in range(30):
         info = ((await rpc(s, "getAccountInfo", [str(tab), {"encoding": "jsonParsed", "commitment": "confirmed"}]))
                 .get("result") or {}).get("value") or {}
         d = (((info.get("data") or {}).get("parsed") or {}).get("info") or {})
-        ora = int((await rpc(s, "getSlot", [{"commitment": "confirmed"}]))["result"])
-        if len(d.get("addresses") or []) == len(indirizzi) and ora > int(d.get("lastExtendedSlot") or 0):
+        now = int((await rpc(s, "getSlot", [{"commitment": "confirmed"}]))["result"])
+        if len(d.get("addresses") or []) == len(addresses) and now > int(d.get("lastExtendedSlot") or 0):
             return AddressLookupTableAccount(tab, [Pubkey.from_string(a) for a in d["addresses"]])
         await asyncio.sleep(0.6)
-    raise SystemExit("lookup table non pronta")
+    raise SystemExit("lookup table not ready")
 
 
 async def main():
     async with aiohttp.ClientSession() as s:
-        # 1) trova gli account token vuoti (Tokenkeg + Token-2022)
-        vuoti = []
+        # 1) find the empty token accounts (Tokenkeg + Token-2022)
+        empty = []
         for prog in (KEG, T22):
             r = await rpc(s, "getTokenAccountsByOwner",
                           [str(KP.pubkey()), {"programId": str(prog)}, {"encoding": "jsonParsed"}])
             for a in (r.get("result") or {}).get("value") or []:
                 i = a["account"]["data"]["parsed"]["info"]["tokenAmount"]
                 if int(i["amount"] or 0) == 0:
-                    vuoti.append(Pubkey.from_string(a["pubkey"]))
-        print(f"account vuoti trovati: {len(vuoti)} (rendita ~{len(vuoti) * 0.002039:.4f} SOL)")
-        if not vuoti:
+                    empty.append(Pubkey.from_string(a["pubkey"]))
+        print(f"empty accounts found: {len(empty)} (rent ~{len(empty) * 0.002039:.4f} SOL)")
+        if not empty:
             return
-        tabelle = []
-        # 2) una tx ogni 53, ognuna con la sua lookup table
-        for i in range(0, len(vuoti), 53):
-            gr = vuoti[i:i + 53]
+        tables = []
+        # 2) one tx every 53 accounts, each with its own lookup table
+        for i in range(0, len(empty), 53):
+            gr = empty[i:i + 53]
             bh = (await rpc(s, "getLatestBlockhash", [{"commitment": "confirmed"}]))["result"]["value"]["blockhash"]
-            alt = await tabella(s, gr)
-            tabelle.append(alt)
+            alt = await lookup_table(s, gr)
+            tables.append(alt)
             cu = 60_000 + 2_500 * len(gr)
             ixs = [set_compute_unit_limit(cu), set_compute_unit_price(20_000),
                    Instruction(CM, b"", [AccountMeta(KP.pubkey(), True, True),
@@ -209,7 +209,7 @@ async def main():
                 sim = await rpc(s, "simulateTransaction", [base64.b64encode(raw).decode(), {
                                 "encoding": "base64", "sigVerify": False, "replaceRecentBlockhash": True}])
                 err = sim.get("error") or ((sim.get("result") or {}).get("value") or {}).get("err")
-                print(f"tx {i // 53 + 1}: {len(gr)} conti, {len(raw)} byte, sim err={err}")
+                print(f"tx {i // 53 + 1}: {len(gr)} accounts, {len(raw)} bytes, sim err={err}")
                 continue
             tx = VersionedTransaction(msg, [KP])
             raw = base64.b64encode(bytes(tx)).decode()
@@ -223,14 +223,14 @@ async def main():
                 if v and v.get("confirmationStatus") in ("confirmed", "finalized"):
                     print(f"tx {i // 53 + 1}: {sig}, err={v.get('err')}")
                     break
-        # 3) disattiva le tabelle: l'affitto si recupera chiudendole ~4 minuti dopo
-        #    (Solana 4.x: il close è permesso solo a deactivation completa, ~512 slot).
-        #    Per chiuderle: ripetere ix_alt_disattiva → attendere ~4 min → invia ix close
-        #    (Instruction(ALT_P, struct.pack("<I", 4), [tab w, autorità signer, destinatario w])).
-        for alt in tabelle:
-            await invia(s, [ix_alt_disattiva(alt.address)])
-            print(f"tabella {alt.address} disattivata, chiudibile tra ~4 minuti per riavere l'affitto")
-        print("fatto. La rendita degli account è già nel wallet.")
+        # 3) deactivate the tables: their rent comes back by closing them ~4 minutes later
+        #    (Solana 4.x: close is allowed only after full deactivation, ~512 slots).
+        #    To close them: wait ~4 min after ix_alt_deactivate, then send the close ix
+        #    (Instruction(ALT_P, struct.pack("<I", 4), [table w, authority signer, recipient w])).
+        for alt in tables:
+            await send(s, [ix_alt_deactivate(alt.address)])
+            print(f"table {alt.address} deactivated, can be closed in ~4 minutes to get its rent back")
+        print("done. The rent of the accounts is already in the wallet.")
 
 
 asyncio.run(main())

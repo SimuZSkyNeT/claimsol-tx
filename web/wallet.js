@@ -1,15 +1,15 @@
-/* SolHouse Signal Tools — connettore universale per i wallet Solana.
+/* SolHouse Signal Tools: universal connector for Solana wallets.
  *
  * 1) Wallet Standard (Phantom, Solflare, Backpack, Glow, OKX, Coinbase, Trust, Bitget,
- *    Exodus, Magic Eden, …): scoperti con l'evento standard, firmano byte grezzi.
- * 2) Provider "vecchi" iniettati (window.phantom.solana, window.solflare, …): firmano
- *    oggetti web3.js → si usa la copia locale di @solana/web3.js solo per loro.
- * 3) Su telefono senza wallet nel browser: link per aprire la pagina DENTRO l'app.
- * Nessuna chiave privata passa mai di qui: il wallet firma e basta.
+ *    Exodus, Magic Eden, …): discovered through the standard event, they sign raw bytes.
+ * 2) "Legacy" injected providers (window.phantom.solana, window.solflare, …): they sign
+ *    web3.js objects, so the local copy of @solana/web3.js is used only for them.
+ * 3) On a phone without a wallet in the browser: links that open the page INSIDE the app.
+ * No private key ever passes through here: the wallet just signs.
  */
 (function () {
     const CHAIN = "solana:mainnet";
-    const std = [];                       // wallet standard registrati
+    const std = [];                       // registered standard wallets
     function registra(...ws) {
         for (const w of ws) {
             if (!w || std.includes(w)) continue;
@@ -28,7 +28,7 @@
         window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: { register: registra } }));
     } catch (_) {}
 
-    // provider vecchi: [nome, funzione che lo trova, icona]
+    // legacy providers: [name, finder function, icon]
     const LEGACY = [
         ["Phantom", () => window.phantom && window.phantom.solana && window.phantom.solana.isPhantom && window.phantom.solana],
         ["Solflare", () => window.solflare && window.solflare.isSolflare && window.solflare],
@@ -60,9 +60,9 @@
     }
 
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    /* 10/10/2026 (mobile): aprire la pagina DENTRO l'app del wallet la faceva ripartire da zero
-     * (wallet da riscansionare, ref perso, Connect da ripremere). Il link ora porta con sé il wallet
-     * scansionato (?wallet= è già nell'indirizzo), il ref e connect=1: dentro l'app si collega subito. */
+    /* 10/10/2026 (mobile): opening the page INSIDE the wallet app used to start from scratch
+     * (wallet to scan again, ref lost, Connect to press again). The link now carries the scanned
+     * wallet (?wallet= is already in the address), the ref and connect=1: inside the app it connects right away. */
     function urlPerApp() {
         const u = new URL(location.href);
         u.searchParams.set("connect", "1");
@@ -93,7 +93,7 @@
             const acc = accs.find(a => (a.chains || [CHAIN]).some(c => c.startsWith("solana:"))) || accs[0];
             if (!acc) throw new Error("No Solana account in this wallet");
             W.conn = { name: w.name, icon: w.icon, kind: "standard", ref: w.ref, account: acc, address: acc.address };
-            // cambio di account dentro il wallet → la pagina si aggiorna da sola
+            // account switched inside the wallet: the page updates by itself
             try {
                 const ev = w.ref.features["standard:events"];
                 if (ev && !w.ref.__shAscolto) {
@@ -124,18 +124,18 @@
             } catch (_) {}
         }
         try { localStorage.setItem("sh_wallet", w.name); } catch (_) {}
-        // collegamento scelto dall'utente → account.js fa il login (una firma gratuita, una volta sola)
+        // connection chosen by the user: account.js logs in (one free signature, only once)
         if (!silenzioso) document.dispatchEvent(new CustomEvent("sh-connected", { detail: { address: W.conn.address } }));
         return W.conn;
     }
 
-    /* 10/10: la connessione sopravvive al cambio pagina. Il wallet scelto si ricorda in
-     * localStorage e ad ogni pagina si ricollega in SILENZIO (nessun popup: il wallet risponde
-     * solo se il sito è già autorizzato). Le pagine aspettano SHWallet.pronto. */
+    /* 10/10: the connection survives page changes. The chosen wallet is remembered in
+     * localStorage and every page reconnects SILENTLY (no popup: the wallet only answers if the
+     * site is already authorized). Pages wait for SHWallet.pronto. */
     async function riprendi() {
         let nome = "";
         try { nome = localStorage.getItem("sh_wallet") || ""; } catch (_) {}
-        // arrivati dall'app del wallet con connect=1: si collega subito (una sola approvazione)
+        // coming from the wallet app with connect=1: connect right away (a single approval)
         const qs = new URLSearchParams(location.search);
         if (qs.get("connect") === "1") {
             qs.delete("connect");
@@ -143,31 +143,31 @@
             if (!nome) return collegaDaApp();
         }
         if (!nome) return null;
-        for (let i = 0; i < 20; i++) {                  // i wallet standard si registrano con un po' di ritardo
+        for (let i = 0; i < 20; i++) {                  // standard wallets register with a small delay
             const w = elenco().find(x => x.name === nome);
             if (w) {
                 try {
                     const c = await connetti(w, true);
                     document.dispatchEvent(new CustomEvent("sh-account-changed"));
                     return c;
-                } catch (_) { return null; }        // non più autorizzato: si resta scollegati, senza popup
+                } catch (_) { return null; }        // no longer authorized: stay disconnected, no popup
             }
             await new Promise(r => setTimeout(r, 150));
         }
         return null;
     }
     async function collegaDaApp() {
-        // prima che la pagina abbia caricato account.js nessuno ascolterebbe «sh-connected» (niente login)
+        // before the page has loaded account.js nobody would hear "sh-connected" (no login)
         if (document.readyState === "loading")
             await new Promise(r => document.addEventListener("DOMContentLoaded", r, { once: true }));
         let lista = [];
-        for (let i = 0; i < 20 && !lista.length; i++) {        // nell'app il wallet si registra in un attimo
+        for (let i = 0; i < 20 && !lista.length; i++) {        // inside the app the wallet registers almost at once
             lista = elenco();
             if (!lista.length) await new Promise(r => setTimeout(r, 150));
         }
         if (lista.length === 1) {
-            try { return await connetti(lista[0]); }            // evento sh-connected → login automatico
-            catch (_) { /* richiesta automatica rifiutata: si apre la scelta normale */ }
+            try { return await connetti(lista[0]); }            // sh-connected event: automatic login
+            catch (_) { /* automatic request refused: open the normal picker */ }
         }
         document.dispatchEvent(new CustomEvent("sh-connect-request"));
         return null;
@@ -192,17 +192,17 @@
         return btoa(s);
     }
 
-    /** Phantom vero (12/10): anche su SOLA firma. È l'unico wallet con il blocco «Request blocked»
-     *  sulle richieste multiple, quindi è l'unico a cui si manda UNA transazione per richiesta. */
+    /** Real Phantom (12/10), also for sign-only. It is the only wallet that shows "Request blocked"
+     *  on multi-transaction requests, so it is the only one that gets ONE transaction per request. */
     const isPhantom = c => !!(c && /phantom/i.test(c.name));
-    /** 13/10: rifiuto esplicito dell'utente (codice 4001 o testo): MAI ripiegare su una alla volta,
-     *  sarebbero N popup di fila dopo che ha detto no. */
+    /** 13/10: explicit rejection by the user (code 4001 or text): NEVER fall back to one at a
+     *  time, that would be N popups in a row after they said no. */
     const rifiutato = e => !!e && (e.code === 4001 || /reject|denied|cancel/i.test(String(e.message || e)));
 
-    /** Firma (senza inviare) una lista di transazioni base64. Ritorna base64 firmate.
-     *  12/10: i wallet che accettano più transazioni per richiesta le firmano in UNA approvazione
-     *  (una firma che copre N tx). Phantom no: le sue richieste multiple sono bloccate, quindi per
-     *  lui si va una alla volta. Se un wallet rifiuta il batch, si ripiega su una alla volta. */
+    /** Sign (without sending) a list of base64 transactions. Returns signed base64.
+     *  12/10: wallets that accept several transactions per request sign them with ONE approval
+     *  (one signature covering N txs). Not Phantom: its multi-transaction requests are blocked,
+     *  so it goes one at a time. If a wallet can't do the batch, fall back to one at a time. */
     async function firma(txsB64) {
         if (!W.conn) throw new Error("Connect a wallet first");
         const c = W.conn;
@@ -211,15 +211,15 @@
             if (!f) throw new Error(`${c.name} can only sign-and-send: please use another wallet`);
             const inputs = txsB64.map(t => ({ transaction: b64ToBytes(t), account: c.account, chain: CHAIN }));
             let out;
-            if (isPhantom(c)) {                                    // Phantom: blocco sulle richieste multiple
+            if (isPhantom(c)) {                                    // Phantom: multi-transaction requests are blocked
                 out = [];
                 for (const i of inputs) out.push(...(await f.signTransaction(i)));
             } else {
                 try {
-                    out = await f.signTransaction(...inputs);      // tutte in una approvazione
+                    out = await f.signTransaction(...inputs);      // all of them in one approval
                 } catch (e) {
                     if (inputs.length < 2 || rifiutato(e)) throw e;
-                    out = [];                                      // wallet che ne accettano una sola
+                    out = [];                                      // wallets that accept only one
                     for (const i of inputs) out.push(...(await f.signTransaction(i)));
                 }
             }
@@ -230,13 +230,13 @@
         let signed;
         if (!isPhantom(c) && txs.length > 1 && typeof c.ref.signAllTransactions === "function") {
             try { signed = await c.ref.signAllTransactions(txs); }
-            catch (e) { if (rifiutato(e)) throw e; signed = null; }  // batch non supportato: una alla volta
+            catch (e) { if (rifiutato(e)) throw e; signed = null; }  // batch not supported: one at a time
         }
         if (!signed) { signed = []; for (const t of txs) signed.push(await c.ref.signTransaction(t)); }
         return signed.map(t => bytesToB64(t.serialize()));
     }
 
-    // base58 (le firme Solana si mostrano/inviano così)
+    // base58 (how Solana signatures are shown and sent)
     const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     function b58(bytes) {
         let n = 0n;
@@ -247,8 +247,8 @@
         return s;
     }
 
-    /** true se il wallet sa firmare SENZA inviare (→ una sola approvazione per tutto il giro e
-     *  invio insistente dal nostro server: il percorso più affidabile, scelto il 10/10). */
+    /** true if the wallet can sign WITHOUT sending (one approval for the whole round and
+     *  persistent sending from our server: the most reliable path, chosen on 10/10). */
     function puoFirmare() {
         const c = W.conn;
         if (!c) return false;
@@ -257,7 +257,7 @@
             && !!window.solanaWeb3;
     }
 
-    /** true se il wallet collegato sa «firmare e inviare» da sé (metodo raccomandato da Phantom). */
+    /** true if the connected wallet can "sign and send" by itself (the method Phantom recommends). */
     function puoInviare() {
         const c = W.conn;
         if (!c) return false;
@@ -265,7 +265,7 @@
         return typeof c.ref.signAndSendTransaction === "function" && !!window.solanaWeb3;
     }
 
-    /** Fa firmare E INVIARE al wallet una transazione (base64). Ritorna la firma base58. */
+    /** Has the wallet sign AND SEND one transaction (base64). Returns the base58 signature. */
     async function firmaEInvia(txB64) {
         const c = W.conn;
         if (c.kind === "standard") {
@@ -279,11 +279,11 @@
         return (r && (r.signature || r)).toString();
     }
 
-    /** UNA sola approvazione per tutte le transazioni: si passano insieme al wallet.
-     *  Ritorna le firme base58 nell'ordine. Se il wallet ne accetta una per volta, ripiega. */
+    /** ONE approval for all the transactions: they are passed to the wallet together.
+     *  Returns the base58 signatures in order. If the wallet accepts one at a time, falls back. */
     async function firmaEInviaTutte(txsB64, avanzamento) {
         const c = W.conn;
-        // 11/10: richiesta multipla = blocco rosso su Phantom → batch solo per gli altri wallet
+        // 11/10: a multi-transaction request is a red block on Phantom, so batch only for other wallets
         if (txsB64.length > 1 && !isPhantom(c)) {
             try {
                 if (c.kind === "standard") {
@@ -300,7 +300,7 @@
                     if (sigs.length === txsB64.length) return sigs.map(x => x.toString());
                 }
             } catch (e) {
-                // rifiuto esplicito dell'utente: non si insiste con altre richieste
+                // explicit rejection by the user: no further requests
                 if (rifiutato(e)) throw e;
             }
         }
@@ -313,19 +313,19 @@
         return out;
     }
 
-    /** Phantom: «firma e invia tutto» con UNA approvazione (signAndSendAllTransactions del suo
-     *  provider). È ciò che Phantom raccomanda: invia lui e aggiunge le protezioni Lighthouse,
-     *  quindi niente avviso «dApp could be malicious» (10/10, supporto Phantom). */
+    /** Phantom: "sign and send all" with ONE approval (signAndSendAllTransactions of its
+     *  provider). Phantom recommends it: it sends and adds its Lighthouse guards, so no
+     *  "dApp could be malicious" warning (10/10, Phantom support). */
     function phantomTutto() {
         const c = W.conn;
         const p = window.phantom && window.phantom.solana;
         return !!(c && /phantom/i.test(c.name) && p && typeof p.signAndSendAllTransactions === "function"
                   && window.solanaWeb3);
     }
-    /** 🔴 11/10/2026, provato con Phantom vero (26.32): QUALUNQUE richiesta con più transazioni insieme
-     *  (signAndSendAllTransactions, signAllTransactions) mostra «Request blocked · This dApp could be
-     *  malicious», anche due trasferimenti banali su example.com. Una transazione per richiesta passa
-     *  pulita. Quindi: una alla volta. Rifiuto dell'utente → ci si ferma, le precedenti restano fatte. */
+    /** 🔴 11/10/2026, tested with real Phantom (26.32): ANY request with several transactions
+     *  (signAndSendAllTransactions, signAllTransactions) shows "Request blocked · This dApp could be
+     *  malicious", even two trivial transfers on example.com. One transaction per request passes
+     *  cleanly. So: one at a time. If the user rejects, stop; the previous ones stay done. */
     async function inviaPhantom(txsB64, avanzamento, rinnova) {
         const p = window.phantom.solana;
         if (!p.isConnected) await p.connect();
@@ -333,7 +333,7 @@
         for (let i = 0; i < txsB64.length; i++) {
             if (avanzamento) avanzamento(i, txsB64.length);
             try {
-                // 🕐 blockhash fresco subito prima di ogni approvazione (le precedenti possono aver preso minuti)
+                // 🕐 fresh blockhash right before each approval (the previous ones may have taken minutes)
                 let b64 = txsB64[i];
                 if (rinnova && i > 0) { try { b64 = (await rinnova(i)) || b64; } catch (_) {} }
                 const tx = window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(b64));
@@ -348,7 +348,7 @@
         return sigs;
     }
 
-    /** Firma un messaggio di testo (login «Sign in with Solana»). Ritorna la firma in base64. */
+    /** Signs a text message ("Sign in with Solana" login). Returns the signature in base64. */
     async function firmaMessaggio(testo) {
         const c = W.conn;
         if (!c) throw new Error("Connect a wallet first");

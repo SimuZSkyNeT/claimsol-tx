@@ -103,9 +103,9 @@ def ix_burn(owner, a):
     ph = AccountMeta(TM, False, False)                       # absent optional account = program id
     coll = AccountMeta(pda_metadata(Pubkey.from_string(a["collection"])), False, True) if a.get("collection") else ph
     rec = AccountMeta(pda_record(mint, token), False, True) if a.get("pnft") else ph
-    conti = [AccountMeta(owner, True, True), coll,
+    accounts = [AccountMeta(owner, True, True), coll,
              AccountMeta(pda_metadata(mint), False, True), AccountMeta(pda_edition(mint), False, True),
              AccountMeta(mint, False, True), AccountMeta(token, False, True),
              ph, ph, ph, ph, rec,
              AccountMeta(SYS, False, False), AccountMeta(SYSVAR_IX, False, False), AccountMeta(TOKEN, False, False)]
-    return Instruction(TM, bytes([41, 0]) + (1).to_bytes(8, "little"), conti)
+    return Instruction(TM, bytes([41, 0]) + (1).to_bytes(8, "little"), accounts)

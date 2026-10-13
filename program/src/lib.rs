@@ -4,7 +4,7 @@
 //!                 rent (SOL goes back to the same wallet). Must be writable.
 //!           [1] Tokenkeg program (readonly, executable)
 //!           [2] Token-2022 program (readonly, executable)
-//!           [3..] the token accounts to close, in any order (max ~53: the rest of the
+//!           [3..] the token accounts to close, in any order (max ~56: the rest of the
 //!                 64-account budget goes to owner + 2 token programs + this program + wallet
 //!                 guards).
 //! Data: empty. Nothing else can happen in this program: the only CPI is Token CloseAccount
@@ -12,7 +12,7 @@
 //!
 //! Why it exists: Phantom blocks transactions with more than ~32 instructions, so the classic
 //! flow packs at most 25 closures per transaction. With this program ONE instruction closes up
-//! to ~53 accounts (Solana's hard limit is 64 accounts per transaction; a few slots are left
+//! to ~56 accounts (Solana's hard limit is 64 accounts per transaction; a few slots are left
 //! for the fee transfer and wallet-side guards), cutting approvals ~2x. It is the exact code
 //! published for users to verify.
 
@@ -37,13 +37,13 @@ pub fn process_instruction(
     _data: &[u8],
 ) -> ProgramResult {
     let mut it = accounts.iter();
-    let owner = next_account_info(&mut it)?; // firmatario: authority di ogni account + destinatario della rendita
+    let owner = next_account_info(&mut it)?; // signer: authority of every account + destination of the rent
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // La CPI invoke() esige l'AccountInfo del programma invocato tra gli account passati:
-    // per questo i due programmi token sono account dell'istruzione.
+    // invoke() needs the AccountInfo of the called program among the passed accounts:
+    // that is why the two token programs are accounts of the instruction.
     let keg = next_account_info(&mut it)?;
     let t22 = next_account_info(&mut it)?;
     if keg.key != &TOKENKEG || t22.key != &TOKEN22 {
@@ -64,7 +64,7 @@ pub fn process_instruction(
         } else {
             return Err(ProgramError::IllegalOwner);
         };
-        // SPL/T-2022 CloseAccount (ix 9): account writable, destination writable, authority firmataria.
+        // SPL/T-2022 CloseAccount (ix 9): account writable, destination writable, authority signer.
         let ix = Instruction {
             program_id: *tp.key,
             accounts: vec![

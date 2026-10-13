@@ -19,7 +19,7 @@ JUP = "https://lite-api.jup.ag/swap/v1"
 WSOL = "So11111111111111111111111111111111111111112"
 SLIPPAGE_BPS = 300
 MIN_OUT_LAMPORTS = 50_000        # below this the network + priority fee would eat it
-MAX_PRICE_IMPACT = 0.10         # 10%: oltre, la vendita svenderebbe il token
+MAX_PRICE_IMPACT = 0.10         # 10%: above this the sale would dump the token for too little
 CU_MARGINE = 60_000              # same headroom as the other transactions (Lighthouse)
 
 
@@ -42,27 +42,27 @@ async def _alts(rpc, indirizzi):
 
 
 async def prepare(rpc, owner, acc, max_accounts=28):
-    """-> dict(ixs, alts, min_out, out, cu) or dict(errore=...)."""
+    """-> dict(ixs, alts, min_out, out, cu) or dict(error=...)."""
     p = {"inputMint": acc["mint"], "outputMint": WSOL, "amount": acc["amount"],
          "slippageBps": SLIPPAGE_BPS, "restrictIntermediateTokens": "true", "maxAccounts": max_accounts}
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
         async with s.get(JUP + "/quote", params=p) as r:
             q = await r.json(content_type=None)
         if not isinstance(q, dict) or not q.get("outAmount"):
-            return {"errore": "no route"}
+            return {"error": "no route"}
         min_out = int(q["otherAmountThreshold"])
         if min_out < MIN_OUT_LAMPORTS:
-            return {"errore": "worth too little"}
+            return {"error": "worth too little"}
         # 🛡 anti-mistake: a thin market would sell your tokens far below their value. Above
         # MAX_PRICE_IMPACT the token is NOT sold (it stays in the wallet).
         if float(q.get("priceImpactPct") or 0) > MAX_PRICE_IMPACT:
-            return {"errore": f"price impact too high ({float(q['priceImpactPct']) * 100:.0f}%): kept in your wallet"}
+            return {"error": f"price impact too high ({float(q['priceImpactPct']) * 100:.0f}%): kept in your wallet"}
         body = {"quoteResponse": q, "userPublicKey": str(owner), "wrapAndUnwrapSol": True,
                 "dynamicComputeUnitLimit": True}
         async with s.post(JUP + "/swap-instructions", json=body) as r:
             si = await r.json(content_type=None)
     if not isinstance(si, dict) or not si.get("swapInstruction"):
-        return {"errore": "no route"}
+        return {"error": "no route"}
     cu = 300_000
     for c in si.get("computeBudgetInstructions") or []:
         d = base64.b64decode(c["data"])
