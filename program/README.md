@@ -1,88 +1,72 @@
-# claim_close_many — programma on-chain per Claim SOL
+# close_many
 
-## Perché
+A tiny Solana program that closes many empty token accounts of the signer in **one
+instruction**. Claim SOL uses it for bigger claims, so a wallet with hundreds of empty accounts
+needs far fewer approvals.
 
-Phantom blocca le transazioni con più di ~32 istruzioni, quindi il flusso classico di Claim SOL
-impacchetta al massimo 25 chiusure per transazione (una approvazione ognuna). Questo programma
-fa lo stesso lavoro con **una sola istruzione**: il tetto diventa il limite di protocollo di
-64 account per transazione, non i ~32 ix di Phantom. 300 account = ~6 approvazioni invece di 12.
-
-## Cosa fa (e cosa NON può fare)
-
-Una istruzione, dati vuoti:
-
-```
-accounts: [0] owner      — firmatario, authority di ogni token account, e destinatario della rendita
-          [1] programma Tokenkeg (readonly)   — servono alla CPI: invoke() esige l'account
-          [2] programma Token-2022 (readonly)   del programma invocato tra gli account passati
-          [3..] token account da chiudere (max ~53: il resto serve a fee transfer e guardie wallet)
-```
-
-Per ogni token account esegue una CPI `CloseAccount` (ix 9) su Tokenkeg **o** Token-2022 con
-destinazione = authority = il firmatario. Se un account non appartiene ai due programmi token,
-l'istruzione fallisce. Non esiste nessun altro ramo di codice: niente trasferimenti, niente
-approvazioni, niente deleghe. Il sorgente è pubblicato qui proprio perché gli utenti possano
-verificarlo (stesso principio del resto del progetto).
-
-## Costi e limiti
-
-- CU: ~2k per chiusura + overhead → limite 400.000 copre 53+ account.
-- CPI verificata sul processore token MODERNO (solana 4.x): `CloseAccount` vuole
-  `[source, destination, authority firmatario]` — nessun account extra anche per Token-2022.
-  GOTCHA solo per il test locale: `InitializeAccount` moderno vuole 4 account
-  `[account, mint, OWNER, rent]` (l'owner come account è una novità rispetto al classico).
-- Account: 1 owner + 2 programmi token + 1 programma + 1 fee wallet + 53 token = 58; Lighthouse
-  di Phantom ne può aggiungere 2-3 → resta sotto il tetto di 64. NON superare 53 chiusure per tx.
-- Con lo sponsor (gas-free, 2 firmatari) NON usare il programma per ora: il percorso classico
-  resta quello.
-
-## Stato
-
-| passo | stato |
+| | |
 |---|---|
-| sorgente + build (`scripts/build.sh`) | ✅ |
-| prova locale (`scripts/test_local.sh`: validator + deploy + 5 chiusure in 1 ix) | ✅ 5/5 chiusi, rendita +0.0102 SOL rientrata al wallet |
-| deploy devnet (`scripts/deploy_devnet.sh`) | non necessario (mainnet fatto) |
-| deploy mainnet | ✅ 12/10/2026, slot 456.190.497, costo 0,1166 SOL dal wallet progetto |
-| smoke test mainnet (`scripts/smoke_mainnet.py`: crea e chiude 1 account vuoto) | ✅ tx `67XTfAXY…`, rendita +0,002026 SOL rientrata |
-| probe D nel harness (`/dev/phantom.html`: scan vuoti + tx close_many da firmare) | ✅ costruito e servito |
-| test Phantom su mainnet (l'avviso «Unknown program» è il rischio da misurare) | ✅ 12/10 Phantom 26.33.0 reale (server-side, xvfb+playwright): popup «Confirm Transaction» NORMALE, niente «Request blocked»; in Advanced l'istruzione è «Unknown · Program J9Cwi…» = etichetta neutra, nessun banner. **Firmata, inviata e confermata**: tx `PAFmnLBY…`, 2 chiusure, rendita +0,00406556 SOL, 4.669 CU (2 chiusure) → ~53 chiusure ≈ 40k CU |
-| integrazione in `/api/reclaim/build` (nuovo ramo: gruppi da 55 via close_many) | ✅ 13/10: flag `USE_CLOSE_MANY=1` in .env, ramo «cm» dietro `len(chiudi) > MAX_CLOSE_TX and not sponsor` con ALT per blocco e fallback classico; API riavviata e verificata |
+| Program id | [`J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR`](https://solscan.io/account/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR) |
+| Verified build | ✅ [OtterSec verify status](https://verify.osec.io/status/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR): the on-chain binary matches this source at commit `b904fd5` |
+| Source | [`src/lib.rs`](src/lib.rs), about 80 lines, `solana-program` only |
+| Upgrade authority | the Claim SOL project wallet (`D4yzXQEKpbq2bY4awAX2QBDCqZxNBHwJryk4V72nVrmx`). Any upgrade changes the binary hash, so it would show as unverified until it is verified again |
 
-## Verifica a piena densità (13/10, harness `/root/phantom_test/cm_harness.py`)
+## What it does, and what it cannot do
 
-Tx cm da **53 account** (4 Tokenkeg + 49 Token-2022 — entrambi i rami CPI in una istruzione), ALT vera
-on-chain, compilata e simulata con gli stessi parametri di api.py (CUL 60.000 + 53×2.500, CUP 20k,
-fee 15%):
+One instruction, empty data:
 
-- **byte: 511** (tetto nostro 850) — margine per Lighthouse/aggiunte Phantom
-- **simulazione: passa** (err None), **CU consumate: 172.522** contro budget 192.500 — il budget regge
-- ramo **Token-2022 verificato on-chain** con account vero (close_many chiude un account T22, rendita
-  rientrata; tx `2dJRVMWX…`). Il mint WSOL NON va usato per account T22 (`IncorrectProgramId`):
-  serve un mint T22 vero (InitializeMint2, tag 20 — il 22 è InitializeImmutableOwner).
-- GOTCHA ALT su solana 4.x: il **close della lookup table richiede ~512 slot dopo la disattivazione**
-  («Table cannot be closed until it's fully deactivated»): il custode deve rispettare l'attesa.
-- Il wallet progetto deve avere ≥ ~0,025 SOL per creare le tabelle (soglia `_tabella`: rent +
-  SPONSOR_FLOOR + 20M); sotto, il ramo cm degrada alla via classica da solo.
+```
+accounts: [0]  owner             signer, authority of every account below, receives the rent
+          [1]  Token program     TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA (readonly)
+          [2]  Token-2022        TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb (readonly)
+          [3..] token accounts to close, any mix of Token and Token-2022
+```
 
-## Programma su mainnet
+For every account it makes one CPI: `CloseAccount` (instruction 9) on the official Token or
+Token-2022 program, with **destination = authority = the signer**. That is the only code path:
 
-- Program Id: **`J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR`**
-- ProgramData: `8UujbWy7UqZEB3Gp2GLdb8tMPVLb8QcRF3WD2mEMRyP9`
-- Authority (upgrade) e beneficiario della chiusura: il wallet progetto (stessa chiave che paga le fee)
-- Chiave del programma: `program/keys/program_mainnet.json` (gitignored, fuori dal repo)
-- 22.576 byte; chiusura = 1 comando `solana program close` e la rendita torna al wallet
+- the signer must sign, so nobody can close someone else's accounts;
+- the token programs themselves refuse to close an account that still holds tokens, or whose
+  close authority is not the signer;
+- an account owned by any other program makes the whole instruction fail;
+- there are no transfers, approvals, delegations or authority changes in the code.
 
-## Checklist post-deploy
+The two token programs are passed as accounts because `invoke()` needs the account of the
+program it calls.
 
-1. ✅ `solana program deploy` con `--url` RPC progetto + `--keypair` wallet progetto (flag, senza toccare la config globale)
-2. ✅ chiave programma dedicata `keys/program_mainnet.json`, `.gitignore` nel program/
-3. ✅ deploy slot 456.190.497, ProgramData + Authority verificati con `program show`
-4. ⏳ verificare su solscan + richiedere la verifica del programma (Soteria/otter, fonte = questo repo)
-5. ✅ test con Phantom vero su tx close_many: gate passato, «Unknown program» neutrale (vedi tabella Stato).
-   Resta la verifica a 55 chiusure (stesso formato, solo più conti: nessun motivo tecnico di differenza).
+## Limits
 
-## GOTCHA deploy
+Solana allows 64 accounts per transaction, counting the ones loaded from a lookup table.
+Claim SOL puts **at most 56 closures** in one transaction (57 was measured as the exact maximum
+with its 7 static accounts, 58 fails with `TooManyAccountLocks`), and keeps each transaction
+under 850 bytes so wallets have room for their own guard instructions. Each closure costs about
+2,500 compute units.
 
-- Primo tentativo fallito con **«Error: Custom: Invalid blockhash»** (RPC laggante): il deploy è
-  atomico, non lascia buffer né spende nulla; basta ritentare con un blockhash fresco.
+It is only used when the user pays the network fee (one signer). Gas-free claims keep the
+classic path.
+
+## Verify it yourself
+
+```console
+$ cargo install solana-verify
+$ solana-verify verify-from-repo -u mainnet \
+    --program-id J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR \
+    https://github.com/SimuZSkyNeT/claimsol-tx \
+    --commit-hash b904fd5714a569f0f1bada982ae6004e94e2d7d4 \
+    --mount-path program --library-name claimsol_close \
+    --base-image solanafoundation/solana-verifiable-build:4.3.0 --arch v3
+```
+
+The build runs in Docker and compares the hash of the result with the program on-chain
+(`761a26eb…`). The same parameters are stored on-chain in the verification PDA
+`4nDZoR1AM8KQi1GYGL5haPFQadojpGZjeUVLPSFYz95E`.
+
+## Files
+
+| File | What |
+|---|---|
+| `src/lib.rs` | the program |
+| `scripts/build.sh` | local build |
+| `scripts/test_local.sh`, `scripts/test_close_many.py` | local validator test: deploy, create accounts, close them in one instruction |
+| `scripts/smoke_mainnet.py` | mainnet smoke test: create one empty account and close it |
+| `SHARE.md` | standalone guide and script to close your own accounts with the program, without the site |

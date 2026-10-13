@@ -7,6 +7,7 @@
   <img alt="Chain" src="https://img.shields.io/badge/chain-Solana-14F195.svg">
   <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-blue.svg">
   <img alt="Approvals" src="https://img.shields.io/badge/token%20approvals-none-brightgreen.svg">
+  <a href="https://verify.osec.io/status/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR"><img alt="Program: verified build" src="https://img.shields.io/badge/program-verified%20build-brightgreen.svg"></a>
 </p>
 
 Every token you trade on Solana opens a token account that locks **~0.002 SOL of rent**. When
@@ -39,6 +40,7 @@ evil transaction refused: transaction was changed
 |---|---|---|
 | ComputeBudget limit and price | always | network priority |
 | Token `CloseAccount` (9) | every empty account you select | rent goes to **your** wallet, you are the authority |
+| [`close_many`](program/) (`J9Cwi…`) | bigger claims, in place of many `CloseAccount` | one instruction that runs `CloseAccount` on up to 56 of **your** empty accounts, rent to **your** wallet. Our own program, [verified build](https://verify.osec.io/status/J9CwiaxYkQPtr2UDtEsD5EtEePmKxwPWczuH4oAeb4HR): it can do nothing else |
 | Token `BurnChecked` (15) + `CloseAccount` | only tokens you tick to burn | burns **your own** leftover balance of that token |
 | Metaplex `BurnV1` | only NFTs you tick to burn | rent of token, metadata and edition back to you |
 | pump.fun `collect_creator_fee` / PumpSwap `collect_coin_creator_fee` | only if you launched tokens and tick "creator fees" | your unclaimed creator fees go to **your** wallet |
@@ -57,7 +59,7 @@ which of your own accounts to include.
 |---|---|
 | 1. Scan | paste any address: we read its token accounts on-chain. No connection, nothing to sign |
 | 2. Choose | empty accounts are pre-selected; dust and NFTs only if you tick them |
-| 3. Build | the server builds small transactions (max 850 bytes, Solana allows 1232). Closures and burns share the same transaction, so a small claim needs a single approval |
+| 3. Build | the server builds small transactions (max 850 bytes, Solana allows 1232). Closures and burns share the same transaction, so a small claim needs a single approval. Bigger claims close up to 56 accounts per transaction with our verified [`close_many`](program/) program |
 | 4. Simulate | every transaction is simulated with `sigVerify: false`; any that would fail is dropped before your wallet ever sees it |
 | 5. Sign | one transaction per approval, sent with `signAndSendTransaction`: Phantom submits it itself, so its own protections apply |
 | 6. Verify | every claim is listed with its on-chain signature in the [public explorer](https://claimsol.solhousesignal.com/explorer/) |
@@ -88,6 +90,7 @@ sign a transfer out of the project wallet, and it is refused.
 | [`claimsol/nft.py`](claimsol/nft.py) | Metaplex `BurnV1` for junk NFTs |
 | [`claimsol/creator.py`](claimsol/creator.py) | pump.fun and PumpSwap creator fee collection |
 | [`claimsol/alt.py`](claimsol/alt.py) | lookup tables: up to 25 accounts per transaction, one approval each |
+| [`program/`](program/) | `close_many`, the on-chain program for bigger claims: source, tests, how to verify the build |
 | [`claimsol/simulate.py`](claimsol/simulate.py) | simulation before any signature |
 | [`claimsol/cosign.py`](claimsol/cosign.py) | when the server may co-sign a gas-free claim |
 | [`web/wallet.js`](web/wallet.js) | browser side: wallet connection and signing, the exact file served by the site |

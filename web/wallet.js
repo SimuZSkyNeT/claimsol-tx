@@ -192,7 +192,17 @@
         return btoa(s);
     }
 
-    /** Firma (senza inviare) una lista di transazioni base64. Ritorna base64 firmate. */
+    /** Phantom vero (12/10): anche su SOLA firma. È l'unico wallet con il blocco «Request blocked»
+     *  sulle richieste multiple, quindi è l'unico a cui si manda UNA transazione per richiesta. */
+    const isPhantom = c => !!(c && /phantom/i.test(c.name));
+    /** 13/10: rifiuto esplicito dell'utente (codice 4001 o testo): MAI ripiegare su una alla volta,
+     *  sarebbero N popup di fila dopo che ha detto no. */
+    const rifiutato = e => !!e && (e.code === 4001 || /reject|denied|cancel/i.test(String(e.message || e)));
+
+    /** Firma (senza inviare) una lista di transazioni base64. Ritorna base64 firmate.
+     *  12/10: i wallet che accettano più transazioni per richiesta le firmano in UNA approvazione
+     *  (una firma che copre N tx). Phantom no: le sue richieste multiple sono bloccate, quindi per
+     *  lui si va una alla volta. Se un wallet rifiuta il batch, si ripiega su una alla volta. */
     async function firma(txsB64) {
         if (!W.conn) throw new Error("Connect a wallet first");
         const c = W.conn;
@@ -200,14 +210,29 @@
             const f = c.ref.features["solana:signTransaction"];
             if (!f) throw new Error(`${c.name} can only sign-and-send: please use another wallet`);
             const inputs = txsB64.map(t => ({ transaction: b64ToBytes(t), account: c.account, chain: CHAIN }));
-            const out = [];                                        // 11/10: una per richiesta (vedi inviaPhantom)
-            for (const i of inputs) out.push(...(await f.signTransaction(i)));
+            let out;
+            if (isPhantom(c)) {                                    // Phantom: blocco sulle richieste multiple
+                out = [];
+                for (const i of inputs) out.push(...(await f.signTransaction(i)));
+            } else {
+                try {
+                    out = await f.signTransaction(...inputs);      // tutte in una approvazione
+                } catch (e) {
+                    if (inputs.length < 2 || rifiutato(e)) throw e;
+                    out = [];                                      // wallet che ne accettano una sola
+                    for (const i of inputs) out.push(...(await f.signTransaction(i)));
+                }
+            }
             return out.map(o => bytesToB64(o.signedTransaction));
         }
         if (!window.solanaWeb3) throw new Error("Wallet library not loaded");
         const txs = txsB64.map(t => window.solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(t)));
         let signed;
-        signed = []; for (const t of txs) signed.push(await c.ref.signTransaction(t));
+        if (!isPhantom(c) && txs.length > 1 && typeof c.ref.signAllTransactions === "function") {
+            try { signed = await c.ref.signAllTransactions(txs); }
+            catch (e) { if (rifiutato(e)) throw e; signed = null; }  // batch non supportato: una alla volta
+        }
+        if (!signed) { signed = []; for (const t of txs) signed.push(await c.ref.signTransaction(t)); }
         return signed.map(t => bytesToB64(t.serialize()));
     }
 
@@ -258,7 +283,8 @@
      *  Ritorna le firme base58 nell'ordine. Se il wallet ne accetta una per volta, ripiega. */
     async function firmaEInviaTutte(txsB64, avanzamento) {
         const c = W.conn;
-        if (txsB64.length > 1 && false) {      // 11/10: richiesta multipla = blocco rosso su Phantom
+        // 11/10: richiesta multipla = blocco rosso su Phantom → batch solo per gli altri wallet
+        if (txsB64.length > 1 && !isPhantom(c)) {
             try {
                 if (c.kind === "standard") {
                     const f = c.ref.features["solana:signAndSendTransaction"];
@@ -275,7 +301,7 @@
                 }
             } catch (e) {
                 // rifiuto esplicito dell'utente: non si insiste con altre richieste
-                if (/reject|denied|cancel/i.test(String(e && (e.message || e)))) throw e;
+                if (rifiutato(e)) throw e;
             }
         }
         const out = [];
